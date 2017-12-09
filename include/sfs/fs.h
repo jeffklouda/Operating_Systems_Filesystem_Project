@@ -49,7 +49,9 @@ public:
     static bool format(Disk *disk);
 
     bool mount(Disk *disk);
-
+    
+    void initialize_inode(Inode* node);
+    
     ssize_t create();
     bool    remove(size_t inumber);
     ssize_t stat(size_t inumber);
