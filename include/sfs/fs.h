@@ -42,6 +42,7 @@ private:
     uint32_t    inodeBlocks;
     uint32_t    inodes;
     bool*       freeBlocks;
+    Block*      inodeTable;
 
 public:
     static void debug(Disk *disk);
