@@ -38,6 +38,10 @@ private:
     // TODO: Internal helper functions
 
     // TODO: Internal member variables
+    uint32_t    numBlocks;
+    uint32_t    inodeBlocks;
+    uint32_t    inodes;
+    bool*       freeBlocks;
 
 public:
     static void debug(Disk *disk);
