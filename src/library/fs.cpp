@@ -79,6 +79,7 @@ bool FileSystem::mount(Disk *disk) {
     disk->read(0, superBlock.Data);
     
     // Set device and mount
+    this->disk = disk;
     disk->mount();
 
     // Copy metadata
@@ -139,26 +140,43 @@ void FileSystem::initialize_inode(Inode *node) {
 
 ssize_t FileSystem::create() {
     // Locate free inode in inode table
+    ssize_t inodeNumber = -1;
     for (uint32_t i = 0; i < this->inodeBlocks; i++) {
         for (uint32_t j = 0; j < INODES_PER_BLOCK; j++){
             if (!this->inodeTable[i].Inodes[j].Valid){
                 this->inodeTable[i].Inodes[j].Valid = 1;
                 initialize_inode(&inodeTable[i].Inodes[j]);
+                inodeNumber = j+INODES_PER_BLOCK*i;
+                break;
             }
         }
+        if (inodeNumber != -1) {
+            break;
+        }
     }
-    // Record inode if found
-    return 0;
+    
+    // Record inode if found   
+
+    return inodeNumber;
 }
 
 // Remove inode ----------------------------------------------------------------
 
 bool FileSystem::remove(size_t inumber) {
     // Load inode information
-
+    Inode node_to_remove;
+    load_inode(inumber, node_to_remove);
+   
     // Free direct blocks
-
+    for (uint32_t i = 0; i < POINTERS_PER_INODE; i++){
+        this->freeBlocks[node_to_remove.Direct[i]] = true;
+        node_to_remove.Direct[i] = 0;
+    }   
+ 
     // Free indirect blocks
+    if (node_to_remove.Indirect){
+        
+    }
 
     // Clear inode in inode table
     return true;
@@ -190,3 +208,19 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
     // Write block and copy to data
     return 0;
 }
+
+bool FileSystem::load_inode(size_t inumber, Inode *node) {
+    node = inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK];
+    if (node->Valid) {
+        return true;
+    }
+    return false;
+}   
+
+bool FileSystem::save_inode(size_t inumber, Inode *node){
+    inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK] = node;
+    if (inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK].Valid){
+        return true;
+    }   
+    return false;
+} 

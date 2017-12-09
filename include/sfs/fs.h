@@ -51,7 +51,8 @@ public:
     bool mount(Disk *disk);
     
     void initialize_inode(Inode* node);
-    
+    bool load_inode(size_t inumber, Inode *node);   
+ 
     ssize_t create();
     bool    remove(size_t inumber);
     ssize_t stat(size_t inumber);
