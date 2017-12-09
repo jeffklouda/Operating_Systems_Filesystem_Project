@@ -210,7 +210,12 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
 }
 
 bool FileSystem::load_inode(size_t inumber, Inode *node) {
-    node = inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK];
+    node->Valid = inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK].Valid;
+    node->Size = inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK].Size;
+    node->Indirect = inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK].Indirect;
+    for (uint32_t i = 0; i < POINTERS_PER_INODE; i++){
+        node->Direct[i] = inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK].Direct[i];
+    }
     if (node->Valid) {
         return true;
     }
@@ -218,7 +223,12 @@ bool FileSystem::load_inode(size_t inumber, Inode *node) {
 }   
 
 bool FileSystem::save_inode(size_t inumber, Inode *node){
-    inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK] = node;
+    inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK].Valid = node.Valid;
+    inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK].Size = node.Size;
+    inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK].Indirect = node.Indirect;
+    for (uint32_t i = 0; i < POINTERS_PER_INODE; i++){
+        inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK].Direct[i] = node.Direct[i];
+    }
     if (inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK].Valid){
         return true;
     }   
