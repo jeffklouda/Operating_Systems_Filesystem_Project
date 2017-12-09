@@ -42,7 +42,7 @@ private:
     uint32_t    inodeBlocks;
     uint32_t    inodes;
     bool*       freeBlocks;
-    Block*      inodeTable;
+    
     Disk *      disk;
 
 public:
@@ -54,6 +54,7 @@ public:
     void initialize_inode(Inode* node);
     bool load_inode(size_t inumber, Inode *node);   
     bool save_inode(size_t inumber, Inode *node);
+    size_t allocate_free_block();
  
     ssize_t create();
     bool    remove(size_t inumber);
