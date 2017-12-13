@@ -48,6 +48,8 @@ void FileSystem::debug(Disk *disk) {
                 }
                 if (directFlag){
                     std::cout << directBlockString << std::endl;
+                }else{
+                    std::cout << "    direct blocks:\n";
                 }
                 if (inodeBlock.Inodes[j].Indirect) {
                     printf("    indirect block: %d\n", inodeBlock.Inodes[j].Indirect);
@@ -105,6 +107,12 @@ bool FileSystem::format(Disk *disk) {
 
 
 bool FileSystem::mount(Disk *disk) {
+    
+    if (this->disk){
+        return false;
+    }   
+ 
+    
     // Read superblock
     Block superBlock;
     disk->read(0, superBlock.Data);
@@ -116,12 +124,20 @@ bool FileSystem::mount(Disk *disk) {
     if (disk->size() != superBlock.Super.Blocks){
         return false;
     }
-
-   // if (superBlock.Super.InodeBlocks != superBlock.Super.Blocks/10){
-     //   return false;
-    //} 
-
     
+    if (disk->size()%10 == 0){
+        if (superBlock.Super.InodeBlocks != disk->size()/10){
+            return false;
+        }
+    }else{
+        if (superBlock.Super.InodeBlocks != disk->size()/10+1){
+            return false;
+        }
+    }
+    
+    if (superBlock.Super.Inodes != INODES_PER_BLOCK*superBlock.Super.InodeBlocks){
+        return false;
+    }
 
     // Set device and mount
     this->disk = disk;
@@ -132,11 +148,6 @@ bool FileSystem::mount(Disk *disk) {
     this->inodeBlocks   = superBlock.Super.InodeBlocks;
     this->inodes        = superBlock.Super.Inodes;
  
-    //this->inodeTable = new Block[this->inodeBlocks];
-    //for (uint32_t i = 0; i < this->inodeBlocks; i++){
-    //    disk->read(i+1, this->inodeTable[i].Data);
-    //}
-
     // Allocate free block bitmap
     this->freeBlocks = new bool[this->numBlocks];
     for (uint32_t i = 0; i < this->numBlocks; i++){
@@ -149,6 +160,7 @@ bool FileSystem::mount(Disk *disk) {
 
     Block inodeBlock;
     for (uint32_t i = 0; i < this->inodeBlocks; i++){
+        //std::cout << "Block num: " << i << "\n";
         disk->read(i+1, inodeBlock.Data);
         for (uint32_t j = 0; j < INODES_PER_BLOCK; j++){
             if (inodeBlock.Inodes[j].Valid){
@@ -215,7 +227,11 @@ bool FileSystem::remove(size_t inumber) {
     // Load inode information
     Inode node_to_remove;
     load_inode(inumber, &node_to_remove);
-   
+    
+    if (!node_to_remove.Valid){
+        return false;
+    }  
+ 
     // Free direct blocks
     for (uint32_t i = 0; i < POINTERS_PER_INODE; i++){
         this->freeBlocks[node_to_remove.Direct[i]] = true;
@@ -256,12 +272,20 @@ ssize_t FileSystem::stat(size_t inumber) {
 // Read from inode -------------------------------------------------------------
 
 ssize_t FileSystem::read(size_t inumber, char *data, size_t length, size_t offset) {
+    if (inumber >= this->inodeBlocks){ return -1;}
+
     // Load inode information
     Inode loadedInode;
-    load_inode(inumber, &loadedInode);
- 
+    bool validInode = load_inode(inumber, &loadedInode);
+    if (!validInode) { return -1; }
+    if (loadedInode.Size == offset) { return 1; }
+
     // Adjust length
+    length = std::min(length, loadedInode.Size - offset);
+
     uint32_t startBlock = offset/Disk::BLOCK_SIZE;
+    uint32_t startByte  = offset%Disk::BLOCK_SIZE;
+    //std::cout << "startBlock: " << startBlock << "\n";
     //uint32_t totalSize = (length + offset%Disk::BLOCK_SIZE);
     //uint32_t remainder = totalSize%Disk::BLOCK_SIZE;
     /*uint32_t readBlocks;
@@ -272,16 +296,26 @@ ssize_t FileSystem::read(size_t inumber, char *data, size_t length, size_t offse
     }*/
    
     // Read block and copy to data
+    std::string dataString = "";
     Block readFromBlock;
-    uint32_t readIndex = offset;
+    uint32_t readIndex = length;
     uint32_t dataIndex = 0;
+    //if (!loadedInode.Direct[startBlock]){
+    //    return -1;
+    //}
+    //std::cout << "offset: " << offset << "\nstartBlock: " << startBlock << "\nlength: " << length << "\n***\n";
     while (startBlock < POINTERS_PER_INODE && dataIndex < length){
         if (!loadedInode.Direct[startBlock]){
-            return -1;
+            //std::cout << "HERE startBlock:" << startBlock << "\n";
+            startBlock++;
+            continue;
         }
         disk->read(loadedInode.Direct[startBlock], readFromBlock.Data);
         while (readIndex < Disk::BLOCK_SIZE && dataIndex < length){
             data[dataIndex] = readFromBlock.Data[readIndex];
+            //if (dataIndex < 100){
+            //    std::cout << "data[" << dataIndex << "]: " << data[dataIndex] << "\n";
+            //}
             dataIndex++;
             readIndex++;
         }
@@ -294,7 +328,7 @@ ssize_t FileSystem::read(size_t inumber, char *data, size_t length, size_t offse
     startBlock -= POINTERS_PER_INODE - 1;
     while (dataIndex < length && startBlock < POINTERS_PER_BLOCK){
         if (!indirectBlock.Pointers[startBlock]){
-            return -1;
+            return dataIndex;
         }
         disk->read(indirectBlock.Pointers[startBlock], readFromBlock.Data);
         while (readIndex < Disk::BLOCK_SIZE && dataIndex < length){
@@ -306,7 +340,7 @@ ssize_t FileSystem::read(size_t inumber, char *data, size_t length, size_t offse
         startBlock++;
         
     }
-
+    //std::cout << "dataIndex-offset: " << dataIndex-offset << std::endl;
     return dataIndex;
 }
 
@@ -344,7 +378,7 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
         if (!loadedInode.Direct[startBlock]){
             loadedInode.Direct[startBlock] = allocate_free_block();
             if (!loadedInode.Direct[startBlock]){
-                return -1;
+                return dataIndex;
             }
         }
         disk->read(loadedInode.Direct[startBlock], writeToBlock.Data);
@@ -354,6 +388,7 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
             writeIndex++;
         }
         writeIndex = 0;
+        disk->write(loadedInode.Direct[startBlock], writeToBlock.Data);
         startBlock++;
     }       
 
@@ -362,7 +397,10 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
     startBlock -= POINTERS_PER_INODE - 1;
     while (dataIndex < length && startBlock < POINTERS_PER_BLOCK){
         if (!indirectBlock.Pointers[startBlock]){
-            return -1;
+            indirectBlock.Pointers[startBlock] = allocate_free_block();
+            if (!indirectBlock.Pointers[startBlock]){
+                return dataIndex;
+            }
         }
         disk->read(indirectBlock.Pointers[startBlock], writeToBlock.Data);
         while (writeIndex < Disk::BLOCK_SIZE && dataIndex < length){
@@ -371,6 +409,7 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
             writeIndex++;
         }
         writeIndex = 0;
+        disk->write(indirectBlock.Pointers[startBlock], writeToBlock.Data);
         startBlock++;
         
     }
@@ -401,8 +440,26 @@ bool FileSystem::save_inode(size_t inumber, Inode *node){
  
     Block nodeBlock;
     this->disk->read(inumber/INODES_PER_BLOCK+1, nodeBlock.Data);
-   
+
+ 
     nodeBlock.Inodes[inumber%INODES_PER_BLOCK] = *node;
+
+    uint32_t blockCounter = 0;
+    for (uint32_t i = 0; i < POINTERS_PER_INODE; i++){
+        if (node->Direct[i]){
+            blockCounter++;
+        }
+    }  
+    Block indirectBlock;
+    this->disk->read(node->Indirect, indirectBlock.Data);
+    for (uint32_t i = 0; i < POINTERS_PER_BLOCK; i++){
+        if (indirectBlock.Pointers[i]){
+            blockCounter++;
+        }
+    }
+    
+    nodeBlock.Inodes[inumber%INODES_PER_BLOCK].Size = blockCounter*Disk::BLOCK_SIZE;
+    
     this->disk->write(inumber/INODES_PER_BLOCK+1, nodeBlock.Data);
     
     if (node->Valid) {
