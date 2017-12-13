@@ -380,14 +380,15 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
     bool validInode = load_inode(inumber, &loadedInode);
     if (!validInode) { 
         loadedInode.Valid = 1; 
+        loadedInode.Size  = 0;
+        //printf("loadedInode.Size: %u\n", loadedInode.Size);
     }
     size_t   readIndex = length;
     size_t blockSizeVar = Disk::BLOCK_SIZE;
-    loadedInode.Size = std::min(blockSizeVar, readIndex);
-    if (loadedInode.Size == offset) { 
-        printf("size check failed\n");
-        return -1; 
-    }
+    //loadedInode.Size += length;
+    //if (loadedInode.Size == offset) { 
+    //    return -1; 
+    //}
 
     // Adjust length
     //length = std::min(length, loadedInode.Size - offset);
@@ -404,7 +405,6 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
         if (!loadedInode.Direct[startBlock]){
             loadedInode.Direct[startBlock] = allocate_free_block();
             if (!loadedInode.Direct[startBlock]){
-                printf("Block %u wasn't allocated\n", startBlock);
                 startBlock++;
                 startByte = 0;
                 continue;
@@ -413,7 +413,7 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
             
         //size_t blockSizeVar = Disk::BLOCK_SIZE;
         
-        loadedInode.Size = std::min(blockSizeVar, readIndex);
+        //loadedInode.Size = std::min(blockSizeVar, readIndex);
         
         disk->read(loadedInode.Direct[startBlock], readFromBlock.Data);
         uint32_t dataSize = std::min(startByte + readIndex, blockSizeVar);
@@ -439,6 +439,7 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
         if (!loadedInode.Indirect){
             loadedInode.Indirect = allocate_free_block();
             if (!loadedInode.Indirect){
+                loadedInode.Size += dataIndex;
                 return dataIndex;
             }
         }
@@ -477,6 +478,8 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
         return -1;
     }    
 
+    //printf("dataIndex: %u\n Length: %u\n", dataIndex, length);
+    loadedInode.Size += dataIndex;
     return dataIndex;
     //uint32_t totalSize = (length + offset%Disk::BLOCK_SIZE);
     //uint32_t remainder = totalSize%Disk::BLOCK_SIZE;
