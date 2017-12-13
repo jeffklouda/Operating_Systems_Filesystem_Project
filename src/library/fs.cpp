@@ -431,6 +431,7 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
                 return dataIndex;
             }
         }
+        std::cout << "Trying indirect\n";
         disk->read(loadedInode.Indirect, indirectBlock.Data);
         startBlock = startBlock - POINTERS_PER_INODE;
         while (startBlock < POINTERS_PER_BLOCK){
