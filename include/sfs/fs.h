@@ -43,7 +43,7 @@ private:
     uint32_t    inodes;
     bool*       freeBlocks;
     
-    Disk *      disk;
+    Disk *      disk = {0};
 
 public:
     static void debug(Disk *disk);
