@@ -261,86 +261,116 @@ bool FileSystem::remove(size_t inumber) {
 
 ssize_t FileSystem::stat(size_t inumber) {
     // Load inode information
+    if (inumber >= this->inodes){
+        return -1;
+    }
+
     Inode statInode;
-    load_inode(inumber, &statInode);
-/*    Block inodeBlock;
-    disk->read(inumber
-    Inode statInode = this->inodeTable[inumber/INODES_PER_BLOCK].Inodes[inumber%INODES_PER_BLOCK];*/
+    bool validInode = load_inode(inumber, &statInode);
+    if (!validInode){
+        return -1;
+    }
+
     return statInode.Size;
 }
 
 // Read from inode -------------------------------------------------------------
 
 ssize_t FileSystem::read(size_t inumber, char *data, size_t length, size_t offset) {
-    if (inumber >= this->inodeBlocks){ return -1;}
+    
+    if (inumber >= this->inodes){ 
+        return -1;
+    }
 
     // Load inode information
     Inode loadedInode;
     bool validInode = load_inode(inumber, &loadedInode);
-    if (!validInode) { return -1; }
-    if (loadedInode.Size == offset) { return 1; }
+    if (!validInode) { 
+        return -1; 
+    }
+
+    //std::cout << "offset: " << offset << "\n";
+    //std::cout << "loadedInode.Size: " << loadedInode.Size << "\n";
+    if (loadedInode.Size == offset) { 
+        return -1; 
+    }
 
     // Adjust length
     length = std::min(length, loadedInode.Size - offset);
 
     uint32_t startBlock = offset/Disk::BLOCK_SIZE;
     uint32_t startByte  = offset%Disk::BLOCK_SIZE;
-    //std::cout << "startBlock: " << startBlock << "\n";
-    //uint32_t totalSize = (length + offset%Disk::BLOCK_SIZE);
-    //uint32_t remainder = totalSize%Disk::BLOCK_SIZE;
-    /*uint32_t readBlocks;
-    if (remainder == 0){
-        readBlocks = totalSize/Disk::BLOCK_SIZE;
-    }else{
-        readBlocks = (totalSize + Disk::BLOCK_SIZE - remainder)/Disk::BLOCK_SIZE;
-    }*/
    
     // Read block and copy to data
     std::string dataString = "";
     Block readFromBlock;
-    uint32_t readIndex = length;
+    size_t   readIndex = length;
     uint32_t dataIndex = 0;
-    //if (!loadedInode.Direct[startBlock]){
-    //    return -1;
-    //}
-    //std::cout << "offset: " << offset << "\nstartBlock: " << startBlock << "\nlength: " << length << "\n***\n";
-    while (startBlock < POINTERS_PER_INODE && dataIndex < length){
+    while (startBlock < POINTERS_PER_INODE ){
         if (!loadedInode.Direct[startBlock]){
-            //std::cout << "HERE startBlock:" << startBlock << "\n";
+            //std::cout << "StartBlock " << startBlock << " is empty\n";
             startBlock++;
+            startByte = 0;
             continue;
         }
+        
         disk->read(loadedInode.Direct[startBlock], readFromBlock.Data);
-        while (readIndex < Disk::BLOCK_SIZE && dataIndex < length){
-            data[dataIndex] = readFromBlock.Data[readIndex];
-            //if (dataIndex < 100){
-            //    std::cout << "data[" << dataIndex << "]: " << data[dataIndex] << "\n";
-            //}
+        size_t blockSizeVar = Disk::BLOCK_SIZE;
+        uint32_t dataSize = std::min(startByte + readIndex, blockSizeVar);
+        uint32_t incrementer = startByte;
+        
+
+        //printf("incrementer: %u, readIndex: %u\n", incrementer, readIndex);
+        while (incrementer < dataSize){
+            dataString += readFromBlock.Data[incrementer];
+            incrementer++;
             dataIndex++;
-            readIndex++;
         }
-        readIndex = 0;
+        //std::cout << "dataSize: " << dataSize << "\nstartByte: " << startByte << "\nreadIndex" << readIndex << "\nincrementer: " << incrementer << "\ndataIndex: " << dataIndex << "\n";
+        readIndex = readIndex - dataSize + startByte;
+        startByte = 0;
         startBlock++;
     }       
 
     Block indirectBlock;
-    disk->read(loadedInode.Indirect, indirectBlock.Data);
-    startBlock -= POINTERS_PER_INODE - 1;
-    while (dataIndex < length && startBlock < POINTERS_PER_BLOCK){
-        if (!indirectBlock.Pointers[startBlock]){
-            return dataIndex;
+    if (readIndex && loadedInode.Indirect){
+        disk->read(loadedInode.Indirect, indirectBlock.Data);
+        startBlock = startBlock - POINTERS_PER_INODE;
+        while (startBlock < POINTERS_PER_BLOCK){
+            if (!indirectBlock.Pointers[startBlock]){
+                startBlock++;
+                startByte = 0;
+                continue;       
+            }
+            //std::cout << "indirectBlock.Pointers:" << indirectBlock.Pointers[startBlock] << "\n";
+            disk->read(indirectBlock.Pointers[startBlock], readFromBlock.Data);
+            size_t blockSizeVar = this->disk->BLOCK_SIZE;
+            uint32_t dataSize = std::min(startByte + readIndex, blockSizeVar);
+            uint32_t incrementer = startByte;
+            //printf("incrementer: %u, readIndex: %u\n", incrementer, readIndex);
+            while (incrementer < dataSize){
+                dataString += readFromBlock.Data[incrementer];
+                dataIndex++;
+                incrementer++;
+            }
+            //printf("dataIndex: %u\n", dataIndex);
+            readIndex = readIndex - dataSize + startByte;
+            startByte = 0;
+            startBlock++;
+            
         }
-        disk->read(indirectBlock.Pointers[startBlock], readFromBlock.Data);
-        while (readIndex < Disk::BLOCK_SIZE && dataIndex < length){
-            data[dataIndex] = readFromBlock.Data[readIndex];
-            dataIndex++;
-            readIndex++;
-        }
-        readIndex = 0;
-        startBlock++;
-        
     }
-    //std::cout << "dataIndex-offset: " << dataIndex-offset << std::endl;
+
+    //std::cout << "DATASTRING: " << dataString << "\n";
+
+ 
+    //if (!loadedInode.Indirect){
+    //     std::cout << "HASTOBE\n";
+    //     return -1;
+    //}
+
+    memcpy(data, dataString.c_str(), dataString.size());
+    //std::cout << "DATAINDEXRIGHTBEFORE: " << dataIndex << std::endl;
     return dataIndex;
 }
 
