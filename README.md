@@ -6,8 +6,8 @@ This is the documentation for [Project 06] of [CSE.30341.FA17].
 Members
 -------
 
-1. Domer McDomerson (dmcdomer@nd.edu)
-2. Belle Fleur (bfleur@nd.edu)
+1. Matthew D'Alonzo (mdalonz1@nd.edu)
+2. Jeff Klouda (jklouda1@nd.edu)
 
 Design
 ------
